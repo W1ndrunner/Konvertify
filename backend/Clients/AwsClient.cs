@@ -10,9 +10,9 @@ public class AwsClient
 {
     private readonly string bucketName = "uploads-891377227248-eu-north-1-an";
     private readonly int urlDuration = 1; // Hours
-    private IAmazonS3 _s3Client = new AmazonS3Client(RegionEndpoint.EUNorth1);
+    private readonly IAmazonS3 _s3Client = new AmazonS3Client(RegionEndpoint.EUNorth1);
     
-    internal string CreatePresignedUrl(string filename)
+    internal string CreatePresignedUrl(string filename, string folder = "uploads")
     {
         string urlString = "";
         try
@@ -20,7 +20,8 @@ public class AwsClient
             var request = new GetPreSignedUrlRequest()
             {
                 BucketName = bucketName,
-                Key = filename,
+                Key = $"{folder}/{filename}",
+                Verb = HttpVerb.PUT,
                 Expires = DateTime.UtcNow.AddHours(urlDuration)
             };
             urlString = _s3Client.GetPreSignedURL(request);
