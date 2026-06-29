@@ -27,8 +27,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest request, AwsClient awsClient) =>
+app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest request, AwsClient awsClient, ILogger<Program> logger) =>
     {
+        logger.LogInformation("Received request to create job for file: {Filename}", request.Filename);
+        
         string jobUuid = Guid.NewGuid().ToString();
         string webhookToken = Nanoid.Generate();
 
@@ -46,10 +48,13 @@ app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest req
 
         if (result == 0)
         {
+            logger.LogError("Failed to insert job {JobId} into the database.", jobUuid);
             return Results.Problem("Failed to insert job.");
         }
+        logger.LogInformation("Successfully created job {JobId}. Generating S3 Upload URL...", jobUuid);
         string s3Url = awsClient.CreatePresignedUrl(request.Filename);
-
+        
+        logger.LogInformation("S3 Upload URL generated for job {JobId}. Returning to client.", jobUuid);
         return Results.Ok(new
         {
             JobId = jobUuid,
@@ -58,8 +63,9 @@ app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest req
     })
     .WithName("CreateJob");
 
-app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, GetJobRequest request) =>
+app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, [AsParameters] GetJobRequest request, ILogger<Program> logger) =>
     {
+        logger.LogInformation("Checking status for job: {JobId}", request.jobUuid);
         await using var connection = await dataSource.OpenConnectionAsync();
 
         string query = "SELECT status FROM jobs WHERE id = @jobUUID";
@@ -71,15 +77,17 @@ app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, GetJobRequest request
 
         if (job == null)
         {
+            logger.LogWarning("Status check failed: Job {JobId} not found in database.", request.jobUuid);
             return Results.NotFound();
         }
-
+        logger.LogInformation("Job {JobId} status is: {Status}", request.jobUuid, job.Status);
         return Results.Ok(job);
     })
     .WithName("GetJob");
 
-app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, CompleteJobRequest request) =>
+app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, CompleteJobRequest request, ILogger<Program> logger) =>
     {
+        logger.LogInformation("Received webhook completion signal for job: {JobId}", request.jobUuid);
         await using var connection = await dataSource.OpenConnectionAsync();
 
         string query = "SELECT * FROM jobs WHERE id = @jobUUID";
@@ -90,11 +98,13 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
             });
         if (job == null)
         {
+            logger.LogWarning("Webhook failed: Job {JobId} not found.", request.jobUuid);
             return Results.NotFound();
         }
 
         if (request.webhookToken != job.webhookToken)
         {
+            logger.LogWarning("Webhook unauthorized for job {JobId}. Token mismatch.", request.jobUuid);
             return Results.Unauthorized();
         }
 
@@ -108,9 +118,10 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
 
         if (updateJob == 0)
         {
+            logger.LogError("Webhook failed: Could not update status to 'Completed' for job {JobId}.", request.jobUuid);
             return Results.Problem("Failed to update job.");
         }
-
+        logger.LogInformation("Job {JobId} successfully marked as Completed via webhook!", request.jobUuid);
         return Results.Ok();
     })
     .WithName("CompleteJob");
