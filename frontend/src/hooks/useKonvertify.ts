@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback, useEffect } from 'react';
+import { useJobPolling } from './useJobPolling';
 
 const API_BASE = 'http://localhost:5000';
 
@@ -18,37 +18,31 @@ export function useKonvertify() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [startTime, setStartTime] = useState<number | null>(null);
 
-  // Polling query
-  const { data: jobStatus } = useQuery({
-    queryKey: ['job', jobData?.jobId],
-    queryFn: async () => {
-      if (!jobData?.jobId) return null;
-      
-      // Check for 10-minute timeout
-      if (startTime && Date.now() - startTime > 10 * 60 * 1000) {
-        setState('ERROR');
-        setErrorMsg('Conversion timed out after 10 minutes.');
-        throw new Error('Timeout');
-      }
+  // Utilize the dedicated polling hook
+  const { data: jobStatus } = useJobPolling(jobData?.jobId || null, state === 'PROCESSING');
 
-      const res = await fetch(`${API_BASE}/api/jobs?jobUuid=${jobData.jobId}`);
-      if (!res.ok) throw new Error('Failed to fetch job status');
-      const data = await res.json();
-      
-      if (data.status === 'Completed') {
-        setState('SUCCESS');
-      }
-      return data;
-    },
-    enabled: state === 'PROCESSING' && !!jobData?.jobId,
-    refetchInterval: (query) => {
-      const data = query.state.data as any;
-      if (data?.status === 'Completed' || state === 'ERROR') {
-        return false;
-      }
-      return 3000;
-    },
-  });
+  // Monitor the polling status to update the global state
+  useEffect(() => {
+    if (jobStatus?.status === 'Completed') {
+      setState('SUCCESS');
+    } else if (jobStatus?.status === 'Failed') {
+      setState('ERROR');
+      setErrorMsg('Conversion failed on the server.');
+    }
+  }, [jobStatus?.status]);
+
+  // Handle the 10-minute timeout for polling
+  useEffect(() => {
+    if (state === 'PROCESSING' && startTime) {
+      const interval = setInterval(() => {
+        if (Date.now() - startTime > 10 * 60 * 1000) {
+          setState('ERROR');
+          setErrorMsg('Conversion timed out after 10 minutes.');
+        }
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [state, startTime]);
 
   const uploadFile = useCallback(async (file: File) => {
     try {
