@@ -40,4 +40,34 @@ public class AwsClient
         return urlString;
     }
 
+    internal string CreatePresignedUrl(string s3Key)
+    {
+        string urlString = "";
+        try
+        {
+            var request = new GetPreSignedUrlRequest
+            {
+                BucketName = bucketName,
+                Key = s3Key,
+                Verb = HttpVerb.GET,
+                Expires = DateTime.UtcNow.AddHours(urlDuration)
+            };
+            urlString = _s3Client.GetPreSignedURL(request);
+
+
+        }
+        catch (AmazonS3Exception exception)
+        {
+            
+            Console.WriteLine($@"Error: {exception.Message}");
+        }
+
+        if (string.IsNullOrEmpty(urlString))
+        {
+            throw new ArgumentNullException();
+        }
+
+        return urlString;
+    }
+
 }
