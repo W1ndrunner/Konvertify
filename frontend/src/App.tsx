@@ -7,7 +7,7 @@ import { SuccessView } from './components/SuccessView';
 import { AlertCircle } from 'lucide-react';
 
 function App() {
-  const { state, errorMsg, jobData, uploadProgress, uploadFile, reset } = useKonvertify();
+  const { state, errorMsg, jobData, uploadProgress, uploadFile, reset, jobStatus } = useKonvertify();
 
   return (
     <>
@@ -37,7 +37,7 @@ function App() {
         )}
 
         {state === 'SUCCESS' && (
-          <SuccessView filename={jobData?.filename} onReset={reset} />
+          <SuccessView filename={jobData?.filename} downloadUrl={jobStatus?.downloadUrl} onReset={reset} />
         )}
 
         {state === 'ERROR' && (

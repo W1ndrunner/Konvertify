@@ -3,16 +3,11 @@ import { CheckCircle2, Download, RefreshCcw } from 'lucide-react';
 
 interface SuccessViewProps {
   filename?: string;
+  downloadUrl?: string;
   onReset: () => void;
 }
 
-export const SuccessView: React.FC<SuccessViewProps> = ({ filename, onReset }) => {
-  // Since the backend doesn't currently return a Presigned Download URL,
-  // we will simulate the download action or provide a placeholder.
-  const handleDownload = () => {
-    alert("In a full production environment, this would trigger a download using an S3 presigned URL for the converted .kfx file.");
-  };
-
+export const SuccessView: React.FC<SuccessViewProps> = ({ filename, downloadUrl, onReset }) => {
   return (
     <div className="glass-panel animate-fade-in" style={{ textAlign: 'center' }}>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
@@ -25,14 +20,15 @@ export const SuccessView: React.FC<SuccessViewProps> = ({ filename, onReset }) =
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
-        <button 
-          onClick={handleDownload}
+        <a 
+          href={downloadUrl || '#'}
+          download
           className="button-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', justifyContent: 'center' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', justifyContent: 'center', textDecoration: 'none' }}
         >
           <Download size={20} />
           Download .KFX
-        </button>
+        </a>
         
         <button 
           onClick={onReset}
