@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Data;
 using System.Runtime.InteropServices.JavaScript;
 using NanoidDotNet;
@@ -16,6 +17,16 @@ if (string.IsNullOrEmpty(connectionString))
 builder.Services.AddNpgsqlDataSource(connectionString);
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<AwsClient>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend",
+        policy =>
+        {
+            policy.WithOrigins("http://localhost:5173")
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        });
+});
 var app = builder.Build();
 
 
@@ -26,24 +37,24 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowFrontend");
 
 app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest request, AwsClient awsClient, ILogger<Program> logger) =>
     {
         logger.LogInformation("Received request to create job for file: {Filename}", request.Filename);
         
         string jobUuid = Guid.NewGuid().ToString();
-        string webhookToken = Nanoid.Generate();
 
         await using var connection = await dataSource.OpenConnectionAsync();
+        string actualS3Key = $"uploads/{jobUuid}-{request.Filename}";
         string query =
-            "INSERT INTO jobs (id, status, webhook_token, s3_key) VALUES (@Id,'Pending', @WebhookToken, @Filename)";
+            "INSERT INTO jobs (id, status, webhook_token, s3_key) VALUES (@Id,'Pending', '', @S3Key)";
         var result = await connection.ExecuteAsync(
             query,
             new
             {
                 Id = jobUuid,
-                Filename = request.Filename,
-                WebhookToken = webhookToken
+                S3Key = actualS3Key
             });
 
         if (result == 0)
@@ -52,7 +63,7 @@ app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest req
             return Results.Problem("Failed to insert job.");
         }
         logger.LogInformation("Successfully created job {JobId}. Generating S3 Upload URL...", jobUuid);
-        string s3Url = awsClient.CreatePresignedUrl(request.Filename);
+        string s3Url = awsClient.CreatePresignedUrl(actualS3Key);
         
         logger.LogInformation("S3 Upload URL generated for job {JobId}. Returning to client.", jobUuid);
         return Results.Ok(new
@@ -84,7 +95,7 @@ app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, AwsClient awsClient, 
         string downloadURL = null;
         if (job.Status == "Completed")
         {
-            string downloadS3Key = "converted/" + job.S3Key.Replace(".epub", ".kfx");
+            string downloadS3Key = "converted/" + Path.GetFileNameWithoutExtension(job.S3Key) + ".kfx";
             downloadURL = awsClient.CreatePresignedUrl(downloadS3Key);
         }
 
@@ -97,7 +108,7 @@ app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, AwsClient awsClient, 
     })
     .WithName("GetJob");
 
-app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, CompleteJobRequest request, ILogger<Program> logger) =>
+app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, CompleteJobRequest request, IConfiguration config, ILogger<Program> logger) =>
     {
         logger.LogInformation("Received webhook completion signal for job: {JobId}", request.jobUuid);
         await using var connection = await dataSource.OpenConnectionAsync();
@@ -114,7 +125,8 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
             return Results.NotFound();
         }
 
-        if (request.webhookToken != job.webhookToken)
+        var staticToken = config["WebhookSecret"] ?? "SUPER_SECRET_WEBHOOK_KEY";
+        if (request.webhookToken != staticToken)
         {
             logger.LogWarning("Webhook unauthorized for job {JobId}. Token mismatch.", request.jobUuid);
             return Results.Unauthorized();
