@@ -63,13 +63,13 @@ app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest req
     })
     .WithName("CreateJob");
 
-app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, [AsParameters] GetJobRequest request, ILogger<Program> logger) =>
+app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, AwsClient awsClient, [AsParameters] GetJobRequest request, ILogger<Program> logger) =>
     {
         logger.LogInformation("Checking status for job: {JobId}", request.jobUuid);
         await using var connection = await dataSource.OpenConnectionAsync();
 
-        string query = "SELECT status FROM jobs WHERE id = @jobUUID";
-        var job = await connection.QueryFirstOrDefaultAsync<JobStatus>(query,
+        string query = "SELECT status, s3_key as S3Key FROM jobs WHERE id = @jobUUID";
+        var job = await connection.QueryFirstOrDefaultAsync<JobStatusResult>(query,
             new
             {
                 jobUUID = request.jobUuid
@@ -80,8 +80,20 @@ app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, [AsParameters] GetJob
             logger.LogWarning("Status check failed: Job {JobId} not found in database.", request.jobUuid);
             return Results.NotFound();
         }
+        
+        string downloadURL = null;
+        if (job.Status == "Completed")
+        {
+            string downloadS3Key = "converted/" + job.S3Key.Replace(".epub", ".kfx");
+            downloadURL = awsClient.CreatePresignedUrl(downloadS3Key);
+        }
+
         logger.LogInformation("Job {JobId} status is: {Status}", request.jobUuid, job.Status);
-        return Results.Ok(job);
+        return Results.Ok(new
+        {
+            status = job.Status,
+            downloadUrl = downloadURL
+        });
     })
     .WithName("GetJob");
 
@@ -107,7 +119,7 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
             logger.LogWarning("Webhook unauthorized for job {JobId}. Token mismatch.", request.jobUuid);
             return Results.Unauthorized();
         }
-
+        
         string updateQuery = "UPDATE jobs SET status = @status WHERE id = @jobUUID";
         var updateJob = await connection.ExecuteAsync(updateQuery,
             new
@@ -131,7 +143,7 @@ public record CreateJobRequest(string Filename);
 
 public record GetJobRequest(string jobUuid);
 
-public record JobStatus(string Status);
+public record JobStatusResult(string Status, string S3Key);
 
 public record Job(string id, string status, string webhookToken, string s3Key, string createdAt);
 
