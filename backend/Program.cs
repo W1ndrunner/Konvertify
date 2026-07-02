@@ -13,7 +13,7 @@ if (string.IsNullOrEmpty(connectionString))
 {
     throw new ArgumentNullException();
 }
-
+builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 builder.Services.AddNpgsqlDataSource(connectionString);
 builder.Services.AddOpenApi();
 builder.Services.AddSingleton<AwsClient>();
@@ -27,6 +27,7 @@ builder.Services.AddCors(options =>
                   .AllowAnyMethod();
         });
 });
+
 var app = builder.Build();
 
 
