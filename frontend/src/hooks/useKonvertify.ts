@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useJobPolling } from './useJobPolling';
+import { supabase } from '../lib/supabase';
 
 const API_BASE = 'http://localhost:5000';
 
@@ -11,25 +11,62 @@ interface JobData {
   filename: string;
 }
 
+export interface JobStatusResponse {
+  status: 'Pending' | 'Completed' | 'Failed';
+  downloadUrl?: string;
+}
+
 export function useKonvertify() {
   const [state, setState] = useState<JobState>('IDLE');
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [jobData, setJobData] = useState<JobData | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [startTime, setStartTime] = useState<number | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatusResponse | null>(null);
 
-  // Utilize the dedicated polling hook
-  const { data: jobStatus } = useJobPolling(jobData?.jobId || null, state === 'PROCESSING');
-
-  // Monitor the polling status to update the global state
+  // Monitor Supabase Realtime changes when in PROCESSING state
   useEffect(() => {
-    if (jobStatus?.status === 'Completed') {
-      setState('SUCCESS');
-    } else if (jobStatus?.status === 'Failed') {
-      setState('ERROR');
-      setErrorMsg('Conversion failed on the server.');
+    if (state === 'PROCESSING' && jobData?.jobId) {
+      const channel = supabase
+        .channel(`job-${jobData.jobId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'jobs',
+            filter: `id=eq.${jobData.jobId}`,
+          },
+          async (payload) => {
+            const newStatus = payload.new.status;
+            
+            if (newStatus === 'Completed') {
+              try {
+                // Fetch the presigned URL from the C# backend
+                const res = await fetch(`${API_BASE}/api/jobs?jobUuid=${jobData.jobId}`);
+                if (!res.ok) throw new Error('Failed to fetch download URL');
+                
+                const data = await res.json();
+                setJobStatus({ status: 'Completed', downloadUrl: data.downloadUrl });
+                setState('SUCCESS');
+              } catch (err) {
+                setState('ERROR');
+                setErrorMsg('Job completed but failed to retrieve download URL.');
+              }
+            } else if (newStatus === 'Failed') {
+              setJobStatus({ status: 'Failed' });
+              setState('ERROR');
+              setErrorMsg('Conversion failed on the server.');
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
-  }, [jobStatus?.status]);
+  }, [state, jobData?.jobId]);
 
   // Handle the 10-minute timeout for polling
   useEffect(() => {
@@ -48,6 +85,7 @@ export function useKonvertify() {
     try {
       setState('INITIALIZING_JOB');
       setErrorMsg('');
+      setJobStatus(null);
       
       // 1. Initialize Job
       const initRes = await fetch(`${API_BASE}/api/jobs`, {
@@ -87,7 +125,7 @@ export function useKonvertify() {
         xhr.send(file);
       });
       
-      // 3. Start processing (Polling)
+      // 3. Start processing (Realtime)
       setState('PROCESSING');
       setStartTime(Date.now());
       
@@ -103,6 +141,7 @@ export function useKonvertify() {
     setErrorMsg('');
     setUploadProgress(0);
     setStartTime(null);
+    setJobStatus(null);
   };
 
   return {
