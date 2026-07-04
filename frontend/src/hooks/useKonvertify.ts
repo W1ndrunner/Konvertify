@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = 'https://adjjjgoie6.execute-api.eu-north-1.amazonaws.com/';
 
 export type JobState = 'IDLE' | 'INITIALIZING_JOB' | 'UPLOADING_TO_S3' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
 
