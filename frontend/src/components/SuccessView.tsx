@@ -1,4 +1,3 @@
-import React from 'react';
 import { CheckCircle2, Download, RefreshCcw } from 'lucide-react';
 
 interface SuccessViewProps {

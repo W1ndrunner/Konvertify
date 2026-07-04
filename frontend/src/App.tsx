@@ -1,4 +1,3 @@
-import React from 'react';
 import { useKonvertify } from './hooks/useKonvertify';
 import { UploadZone } from './components/UploadZone';
 import { UploadProgress } from './components/UploadProgress';

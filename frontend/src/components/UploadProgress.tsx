@@ -1,4 +1,3 @@
-import React from 'react';
 import { CloudLightning } from 'lucide-react';
 
 interface UploadProgressProps {
