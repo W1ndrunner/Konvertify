@@ -104,27 +104,28 @@ app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, AwsClient awsClient, 
     })
     .WithName("GetJob");
 
-app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, CompleteJobRequest request, IConfiguration config, ILogger<Program> logger) =>
+app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, CompleteJobRequest request, IConfiguration config, ILogger<Program> logger, HttpContext httpContext) =>
     {
-        logger.LogInformation("Received webhook completion signal for job: {JobId}", request.jobUuid);
+        logger.LogInformation("Received webhook completion signal for job: {JobId}", request.jobId);
         await using var connection = await dataSource.OpenConnectionAsync();
 
         string query = "SELECT * FROM jobs WHERE id = @jobUUID::uuid";
         var job = await connection.QueryFirstOrDefaultAsync<Job>(query,
             new
             {
-                JobUUID = request.jobUuid
+                JobUUID = request.jobId
             });
         if (job == null)
         {
-            logger.LogWarning("Webhook failed: Job {JobId} not found.", request.jobUuid);
+            logger.LogWarning("Webhook failed: Job {JobId} not found.", request.jobId);
             return Results.NotFound();
         }
 
         var staticToken = config["WebhookSecret"] ?? "SUPER_SECRET_WEBHOOK_KEY";
-        if (request.webhookToken != staticToken)
+        string providedToken = httpContext.Request.Headers["X-Webhook-Token"].FirstOrDefault() ?? "";
+        if (providedToken != staticToken)
         {
-            logger.LogWarning("Webhook unauthorized for job {JobId}. Token mismatch.", request.jobUuid);
+            logger.LogWarning("Webhook unauthorized for job {JobId}. Token mismatch.", request.jobId);
             return Results.Unauthorized();
         }
         
@@ -132,16 +133,16 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
         var updateJob = await connection.ExecuteAsync(updateQuery,
             new
             {
-                jobUUID = request.jobUuid,
+                jobUUID = request.jobId,
                 status = "Completed"
             });
 
         if (updateJob == 0)
         {
-            logger.LogError("Webhook failed: Could not update status to 'Completed' for job {JobId}.", request.jobUuid);
+            logger.LogError("Webhook failed: Could not update status to 'Completed' for job {JobId}.", request.jobId);
             return Results.Problem("Failed to update job.");
         }
-        logger.LogInformation("Job {JobId} successfully marked as Completed via webhook!", request.jobUuid);
+        logger.LogInformation("Job {JobId} successfully marked as Completed via webhook!", request.jobId);
         return Results.Ok();
     })
     .WithName("CompleteJob");
@@ -155,4 +156,4 @@ public record JobStatusResult(string Status, string S3Key);
 
 public record Job(string id, string status, string webhookToken, string s3Key, string createdAt);
 
-public record CompleteJobRequest(string jobUuid, string webhookToken);
+public record CompleteJobRequest(string jobId);
