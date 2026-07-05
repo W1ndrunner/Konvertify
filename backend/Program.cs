@@ -44,7 +44,7 @@ app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest req
         await using var connection = await dataSource.OpenConnectionAsync();
         string actualS3Key = $"uploads/{jobUuid}-{request.Filename}";
         string query =
-            "INSERT INTO jobs (id, status, webhook_token, s3_key) VALUES (@Id,'Pending', '', @S3Key)";
+            "INSERT INTO jobs (id, status, webhook_token, s3_key) VALUES (@Id::uuid,'Pending', '', @S3Key)";
         var result = await connection.ExecuteAsync(
             query,
             new
@@ -75,7 +75,7 @@ app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, AwsClient awsClient, 
         logger.LogInformation("Checking status for job: {JobId}", request.jobUuid);
         await using var connection = await dataSource.OpenConnectionAsync();
 
-        string query = "SELECT status, s3_key as S3Key FROM jobs WHERE id = @jobUUID";
+        string query = "SELECT status, s3_key as S3Key FROM jobs WHERE id = @jobUUID::uuid";
         var job = await connection.QueryFirstOrDefaultAsync<JobStatusResult>(query,
             new
             {
@@ -109,7 +109,7 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
         logger.LogInformation("Received webhook completion signal for job: {JobId}", request.jobUuid);
         await using var connection = await dataSource.OpenConnectionAsync();
 
-        string query = "SELECT * FROM jobs WHERE id = @jobUUID";
+        string query = "SELECT * FROM jobs WHERE id = @jobUUID::uuid";
         var job = await connection.QueryFirstOrDefaultAsync<Job>(query,
             new
             {
@@ -128,7 +128,7 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
             return Results.Unauthorized();
         }
         
-        string updateQuery = "UPDATE jobs SET status = @status WHERE id = @jobUUID";
+        string updateQuery = "UPDATE jobs SET status = @status WHERE id = @jobUUID::uuid";
         var updateJob = await connection.ExecuteAsync(updateQuery,
             new
             {
