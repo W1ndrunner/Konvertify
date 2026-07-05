@@ -1,4 +1,4 @@
-﻿using Amazon.S3.Model;
+using Amazon.S3.Model;
 using Amazon;
 using System;
 using System.Linq.Expressions;
@@ -22,6 +22,7 @@ public class AwsClient
                 BucketName = bucketName,
                 Key = $"{folder}/{filename}",
                 Verb = HttpVerb.PUT,
+                ContentType = "application/octet-stream",
                 Expires = DateTime.UtcNow.AddHours(urlDuration)
             };
             urlString = _s3Client.GetPreSignedURL(request);

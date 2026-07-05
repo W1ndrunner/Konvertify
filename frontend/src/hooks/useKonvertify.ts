@@ -104,6 +104,7 @@ export function useKonvertify() {
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', uploadUrl, true);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
         
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
