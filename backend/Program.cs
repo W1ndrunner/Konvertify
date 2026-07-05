@@ -109,11 +109,13 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
         logger.LogInformation("Received webhook completion signal for job: {JobId}", request.jobId);
         await using var connection = await dataSource.OpenConnectionAsync();
 
+        string actualUuid = request.jobId.Length > 36 ? request.jobId.Substring(0, 36) : request.jobId;
+        
         string query = "SELECT * FROM jobs WHERE id = @jobUUID::uuid";
         var job = await connection.QueryFirstOrDefaultAsync<Job>(query,
             new
             {
-                JobUUID = request.jobId
+                JobUUID = actualUuid
             });
         if (job == null)
         {
@@ -133,7 +135,7 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
         var updateJob = await connection.ExecuteAsync(updateQuery,
             new
             {
-                jobUUID = request.jobId,
+                jobUUID = actualUuid,
                 status = "Completed"
             });
 
