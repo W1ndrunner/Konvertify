@@ -12,7 +12,7 @@ public class AwsClient
     private readonly int urlDuration = 1; // Hours
     private readonly IAmazonS3 _s3Client = new AmazonS3Client(RegionEndpoint.EUNorth1);
     
-    internal string CreatePresignedUrl(string filename, string folder = "uploads")
+    internal string GenerateUploadUrl(string s3Key)
     {
         string urlString = "";
         try
@@ -20,9 +20,8 @@ public class AwsClient
             var request = new GetPreSignedUrlRequest()
             {
                 BucketName = bucketName,
-                Key = $"{folder}/{filename}",
+                Key = s3Key,
                 Verb = HttpVerb.PUT,
-                ContentType = "application/octet-stream",
                 Expires = DateTime.UtcNow.AddHours(urlDuration)
             };
             urlString = _s3Client.GetPreSignedURL(request);
@@ -41,7 +40,7 @@ public class AwsClient
         return urlString;
     }
 
-    internal string CreatePresignedUrl(string s3Key)
+    internal string GenerateDownloadUrl(string s3Key)
     {
         string urlString = "";
         try

@@ -59,7 +59,7 @@ app.MapPost("api/jobs", async (NpgsqlDataSource dataSource, CreateJobRequest req
             return Results.Problem("Failed to insert job.");
         }
         logger.LogInformation("Successfully created job {JobId}. Generating S3 Upload URL...", jobUuid);
-        string s3Url = awsClient.CreatePresignedUrl(actualS3Key);
+        string s3Url = awsClient.GenerateUploadUrl(actualS3Key);
         
         logger.LogInformation("S3 Upload URL generated for job {JobId}. Returning to client.", jobUuid);
         return Results.Ok(new
@@ -92,7 +92,7 @@ app.MapGet("api/jobs", async (NpgsqlDataSource dataSource, AwsClient awsClient, 
         if (job.Status == "Completed")
         {
             string downloadS3Key = "converted/" + Path.GetFileNameWithoutExtension(job.S3Key) + ".kfx";
-            downloadURL = awsClient.CreatePresignedUrl(downloadS3Key);
+            downloadURL = awsClient.GenerateDownloadUrl(downloadS3Key);
         }
 
         logger.LogInformation("Job {JobId} status is: {Status}", request.jobUuid, job.Status);
