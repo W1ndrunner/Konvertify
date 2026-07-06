@@ -111,13 +111,13 @@ app.MapPost("api/webhooks/complete", async (NpgsqlDataSource dataSource, Complet
 
         string actualUuid = request.jobId.Length > 36 ? request.jobId.Substring(0, 36) : request.jobId;
         
-        string query = "SELECT * FROM jobs WHERE id = @jobUUID::uuid";
-        var job = await connection.QueryFirstOrDefaultAsync<Job>(query,
+        string query = "SELECT 1 FROM jobs WHERE id = @jobUUID::uuid";
+        var jobExists = await connection.QueryFirstOrDefaultAsync<int?>(query,
             new
             {
                 JobUUID = actualUuid
             });
-        if (job == null)
+        if (jobExists == null)
         {
             logger.LogWarning("Webhook failed: Job {JobId} not found.", request.jobId);
             return Results.NotFound();
